@@ -1,0 +1,44 @@
+#!/usr/bin/perl -w
+
+# Convert Duxbury DXB files to BRF
+
+use strict;
+
+# ignore page breaks instead of turning them into ^L (\f) in the output file
+# if the output is destined for paper then page breaks make sense, but digital maybe less so
+use constant IGNORE_PAGEBREAK => 1;
+
+my $infile = $ARGV[0];
+open(my $in_fh, "<", $infile);
+# the first 233 bytes are things like embosser setup that we want to ignore
+# actual text content starts at 234
+seek($in_fh, 234, 0);
+$/ = \1;  # read file one byte at a time as it's not entirely ASCII
+
+while(<$in_fh>) {
+  my $byte = ord($_);
+  if($byte == 0) {
+    # text content ends with a NULL character
+    last;
+  } elsif($byte == 0x1C) {
+    # 0x1C is the start of a control sequence, 0x1F is the end
+    my $ctlseq = "";
+    # read until we get the 0x1F "end of control sequence" indicator
+    while(ord(substr($ctlseq, -1)) != 0x1F) {
+      $ctlseq .= getc($in_fh);
+    }
+    chop($ctlseq);
+    if($ctlseq eq "<") {
+      # newline
+      print "\n";
+    } elsif($ctlseq eq "pg") {
+      # page break
+      print "\f" if !IGNORE_PAGEBREAK;
+    } else {
+      print STDERR "Found unknown control sequence '$ctlseq', ignoring.\n";
+    }
+    next;
+  }
+  
+  print $_;
+}
